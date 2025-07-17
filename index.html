@@ -304,10 +304,11 @@
 
                     locationKeys.forEach(locKey => {
                         const numSuffix = locKey.replace('Location', '').trim();
-                        const dateKey = `Date${numSuffix ? ' ' + numSuffix : ''}`;
+                        const dateKey = `Date${numSuffix ? ' ' + numSuffix : ' '}`;
                         const timeKey = `Time${numSuffix ? ' ' + numSuffix : ''}`;
-                        
+
                         let formattedDate = 'N/A';
+//                        if (row[dateKey] != undefined && row[dateKey] !== '') {
                         if (row[dateKey]) {
                             if (typeof row[dateKey] === 'number') {
                                 const date = new Date(Math.round((row[dateKey] - 25569) * 864e5));
@@ -317,7 +318,7 @@
                                 formattedDate = `${month}/${day}/${year}`;
                             } else {
                                 formattedDate = row[dateKey];
-                            }
+                           }
                         }
 
                         let formattedTime = 'N/A';
