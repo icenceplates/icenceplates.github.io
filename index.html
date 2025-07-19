@@ -287,7 +287,7 @@
                 htmlContent += `<p>${T.noResults}</p>`;
             } else {
                 results.forEach((row, index) => {
-                    htmlContent += `<div class="result-card"><h3>${row["STATUS"]}</h3>`;
+                    htmlContent += `<div class="result-card"><h3>${row["STATUS"]}: ${row["Plate No."]}</h3>`;
 
                     if (row["Vehicle Type"] !== undefined) {
                         htmlContent += `<p><strong>${T.vehicleType}:</strong> ${row["Vehicle Type"]}</p>`;
