@@ -269,7 +269,10 @@
 
                 // Fuse.js options for fuzzy search targeting the 'plateNum' key
                 const options = {
+                    ignoreDiacritics: true,
+                    findAllMatches: true, 
                     includeScore: true,
+                    ignoreLocation: true,
                     keys: ['plateNum'],
                     threshold: 0.4 
                 };
