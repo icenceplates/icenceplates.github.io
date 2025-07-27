@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>License Plate Lookup</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .lang-switcher {
+            text-align: right;
+            padding: 10px 20px;
+            background-color: #e9ecef;
+        }
+        .lang-switcher button {
+            background: none;
+            border: 1px solid #007bff;
+            color: #007bff;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .lang-switcher button:hover {
+            background-color: #007bff;
+            color: #fff;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            max-width: 500px;
+            margin: 20px auto;
+        }
+        h1 {
+            color: #333;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button#searchButton {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button#searchButton:hover {
+            background-color: #0056b3;
+        }
+        .note, .disclaimer {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 15px;
+        }
+
+        /* --- Styles for the results displayed on the main page --- */
+        #results-container {
+            max-width: 500px;
+            margin: 20px auto;
+        }
+        #results-container h2 {
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .result-card {
+            font-family: monospace;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .result-card p {
+            margin: 8px 0;
+            line-height: 1.6;
+            word-break: break-word; /* Prevents long text from overflowing */
+        }
+        .result-card strong {
+            display: inline-block;
+            width: 160px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="lang-switcher">
+        <button id="lang-toggle"></button>
+    </div>
+
+    <div class="container">
+        <h1></h1>
+        <form id="lookupForm">
+            <div>
+                <label for="plateInput"></label>
+                <input type="text" id="plateInput" name="plateInput" placeholder="e.g., ABC* or 12?XYZ" required>
+            </div>
+            <button type="submit" id="searchButton"></button>
+            <p class="note"></p>
+            <p class="disclaimer"></p>
+        </form>
+    </div>
+
+    <div id="results-container"></div>
+
+    <script>
+        // --- Translation Data and Logic (Unchanged) ---
+        const translations = {
+            en: {
+                langToggle: "Haga clic aquí para la versión en español",
+                pageTitle: "License Plate Lookup",
+                mainHeader: "License Plate Lookup",
+                plateLabel: "Enter license plate:",
+                searchButton: "Search",
+                note: "If you are unsure of the entire plate number, use ‘?’ in place of a single character and ‘*’ for multiple characters when searching.",
+                disclaimer: "All confirmed vehicles have been reviewed and documented by members of the Rapid Response Team. While the dataset is thorough, it is not exhaustive. ICE has been known to rotate vehicles, switch license plates, and introduce new plates into circulation. Please treat this form as just one component of your verification process. Ultimately, the most reliable way to confirm a vehicle’s purpose is by identifying who is inside.",
+                resultsTitle: "Search results",
+                noResults: "No matching records found.",
+                confirmed: "STATUS",
+                partialMatch: "Partial Match",
+                matchHeader: "Match #",
+                vehicleType: "Vehicle Type",
+                stateGov: "State / GOV",
+                uniqueIDs: "Notes",
+                location: "Location",
+                date: "Date",
+                time: "Time"
+            },
+            es: {
+                langToggle: "Click here for the English version",
+                pageTitle: "Búsqueda de Matrículas",
+                mainHeader: "Búsqueda de Matrículas",
+                plateLabel: "Ingrese la matrícula:",
+                searchButton: "Buscar",
+                note: "Si no estás seguro del número completo de la placa, usa ‘?’ para reemplazar un solo carácter y ‘*’ para varios caracteres al buscar.",
+                disclaimer: "Todos los vehículos confirmados han sido revisados y documentados por miembros del Equipo de Respuesta Rápida. Si bien la base de datos es detallada, no es exhaustiva: se sabe que ICE cambia placas, rota vehículos e introduce nuevas placas en circulación. Por favor, utiliza este formulario solo como una parte del proceso de verificación. En última instancia, la forma más confiable de saber con certeza es identificar quién está dentro del vehículo.",
+                resultsTitle: "Resultados de la Búsqueda",
+                noResults: "No se encontraron registros coincidentes.",
+                partialMatch: "Coincidencia Parcial",
+                matchHeader: "Coincidencia #",
+                confirmed: "Confirmada",
+                vehicleType: "Tipo de Vehículo",
+                stateGov: "Estado / GOB",
+                uniqueIDs: "Notas",
+                location: "Ubicación",
+                date: "Fecha",
+                time: "Hora"
+            }
+        };
+
+        let currentLanguage = 'en';
+
+        function setLanguage(lang) {
+            currentLanguage = lang;
+            document.documentElement.lang = lang;
+            document.title = translations[lang].pageTitle;
+            
+            document.getElementById('lang-toggle').textContent = translations[lang].langToggle;
+            document.querySelector('h1').textContent = translations[lang].mainHeader;
+            document.querySelector('label[for="plateInput"]').textContent = translations[lang].plateLabel;
+            document.getElementById('searchButton').textContent = translations[lang].searchButton;
+            document.querySelector('.note').textContent = translations[lang].note;
+            document.querySelector('.disclaimer').textContent = translations[lang].disclaimer;
+            
+            // Re-render results if they exist, to apply new language
+            const resultsContainer = document.getElementById('results-container');
+            if (resultsContainer.innerHTML) {
+                const plateQuery = document.getElementById('plateInput').value;
+                if (plateQuery) {
+                    document.getElementById('lookupForm').requestSubmit();
+                }
+            }
+        }
+
+        document.getElementById('lang-toggle').addEventListener('click', () => {
+            const newLang = currentLanguage === 'en' ? 'es' : 'en';
+            setLanguage(newLang);
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            setLanguage('en');
+        });
+
+        // --- Main Application Logic ---
+        document.getElementById('lookupForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            document.getElementById('results-container').innerHTML = ""; 
+            const plateQuery = document.getElementById('plateInput').value;
+
+            if (!plateQuery) {
+                alert(currentLanguage === 'en' ? "Please enter a license plate to search." : "Por favor, ingrese una matrícula para buscar.");
+                return;
+            }
+
+            fetch('data.xlsx')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Network response was not ok. Could not find data.xlsx.");
+                    }
+                    return response.arrayBuffer();
+                })
+                .then(arrayBuffer => {
+                    processData(arrayBuffer, plateQuery);
+                })
+                .catch(error => {
+                    console.error("Fetch Error:", error);
+                    alert("Could not load 'data.xlsx'. Please make sure the file is in the same folder and you are running this from a local web server.");
+                });
+        });
+
+        function processData(arrayBuffer, plateQuery) {
+            try {
+                const data = new Uint8Array(arrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 0 });
+
+                if (rows.length < 2) {
+                    alert(currentLanguage === 'en' ? "The XLSX file has no data to search." : "El archivo XLSX no tiene datos para buscar.");
+                    return;
+                }
+
+                const headers = rows[0];
+                const plateNoIndex = headers.indexOf("Plate No.");
+                
+                if (plateNoIndex === -1) {
+                    alert(currentLanguage === 'en' ? "The XLSX file must have a 'Plate No.' column in row 1." : "El archivo XLSX debe tener una columna 'Plate No.' en la fila 1.");
+                    return;
+                }
+
+                // Create data objects, preserving original headers and adding a specific 'plateNum' key for searching
+                const dataRows = rows.slice(1).map(row => {
+                    const rowData = {};
+                    headers.forEach((header, index) => {
+                        if (header) {
+                            rowData[header] = row[index];
+                        }
+                    });
+                    // Add a dedicated key for Fuse.js to search against
+                    rowData['plateNum'] = row[plateNoIndex] ? row[plateNoIndex].toString() : '';
+                    return rowData;
+                }).filter(row => row.plateNum); // Filter out rows without a plate number
+
+                // Fuse.js options for fuzzy search targeting the 'plateNum' key
+                const options = {
+                    includeScore: true,
+                    keys: ['plateNum'],
+                    threshold: 0.4 
+                };
+
+                const fuse = new Fuse(dataRows, options);
+                const results = fuse.search(plateQuery);
+
+                displayResults(results);
+
+            } catch (error) {
+                console.error("Error processing XLSX file:", error);
+                alert(currentLanguage === 'en' ? "An error occurred while processing the file." : "Ocurrió un error al procesar el archivo.");
+            }
+        }
+
+        // --- MODIFIED: This function handles Fuse.js result objects ---
+        function displayResults(results) {
+            const resultsContainer = document.getElementById('results-container');
+            const T = translations[currentLanguage];
+            let htmlContent = `<h2>${T.resultsTitle}</h2>`;
+
+            if (results.length === 0) {
+                htmlContent += `<p>${T.noResults}</p>`;
+            } else {
+                results.forEach((result, index) => {
+                    // result.item contains the full original data object for the row
+                    const row = result.item; 
+                    
+                    let matchPrefix = '';
+                    // result.score of 0 is a perfect match. Anything greater is a fuzzy match.
+//                    if (result.score > 0) {
+//                        matchPrefix = `<span style="color: #d9534f;">${T.partialMatch}: </span>`;
+//                    }
+
+                    // Use the original "Plate No." key for display purposes
+                    htmlContent += `<div class="result-card"><h3>${matchPrefix}${row["STATUS"]}: ${row["Plate No."]}</h3>`;
+
+                    if (row["Vehicle Type"] !== undefined) {
+                        htmlContent += `<p><strong>${T.vehicleType}:</strong> ${row["Vehicle Type"]}</p>`;
+                    }
+                    if (row["State / GOV"] !== undefined) {
+                        htmlContent += `<p><strong>${T.stateGov}:</strong> ${row["State / GOV"]}</p>`;
+                    }
+                    if (row["Unique Identifiers / Notes"] !== undefined) {
+                        htmlContent += `<p><strong>${T.uniqueIDs}:</strong> ${row["Unique Identifiers / Notes"]}</p>`;
+                    }
+
+                    const keys = Object.keys(row);
+                    const locationKeys = keys.filter(k => k.startsWith("Location")).sort();
+
+                    locationKeys.forEach(locKey => {
+                        const numSuffix = locKey.replace('Location', '').trim();
+                        const dateKey = `Date${numSuffix ? ' ' + numSuffix : ' '}`;
+                        const timeKey = `Time${numSuffix ? ' ' + numSuffix : ''}`;
+
+                        let formattedDate = 'N/A';
+                        if (row[dateKey]) {
+                            if (typeof row[dateKey] === 'number') {
+                                const date = new Date(Math.round((row[dateKey] - 25569) * 864e5));
+                                const year = date.getUTCFullYear().toString().slice(-2);
+                                const month = ('0' + (date.getUTCMonth() + 1)).slice(-2);
+                                const day = ('0' + date.getUTCDate()).slice(-2);
+                                formattedDate = `${month}/${day}/${year}`;
+                            } else {
+                                formattedDate = row[dateKey];
+                           }
+                        }
+
+                        let formattedTime = 'N/A';
+                        if(row[timeKey]){
+                             if (typeof row[timeKey] === 'number') {
+                                const totalSeconds = Math.round(row[timeKey] * 86400);
+                                const hours = ('0' + Math.floor(totalSeconds / 3600)).slice(-2);
+                                const minutes = ('0' + Math.floor((totalSeconds % 3600) / 60)).slice(-2);
+                                const seconds = ('0' + (totalSeconds % 60)).slice(-2);
+                                formattedTime = `${hours}:${minutes}:${seconds}`;
+                            } else {
+                                formattedTime = row[timeKey];
+                            }
+                        }
+                        
+                        const locHeader = `${T.location}${numSuffix ? ' ' + numSuffix : ''}`;
+                        const dateHeader = `${T.date}${numSuffix ? ' ' + numSuffix : ''}`;
+                        const timeHeader = `${T.time}${numSuffix ? ' ' + numSuffix : ''}`;
+
+                        htmlContent += `<p><strong>${locHeader}:</strong> ${row[locKey] || 'N/A'}</p>`;
+                        htmlContent += `<p><strong>${dateHeader}:</strong> ${formattedDate}</p>`;
+                        htmlContent += `<p><strong>${timeHeader}:</strong> ${formattedTime}</p>`;
+                    });
+                    
+                    htmlContent += '</div>';
+                });
+            }
+
+            resultsContainer.innerHTML = htmlContent;
+        }
+    </script>
+</body>
+</html>
