@@ -142,6 +142,8 @@
                 resultsTitle: "Search results",
                 noResults: "No matching records found.",
                 confirmed: "STATUS",
+                isConfirmed: "CONFIRMED",
+                isNotConfirmed: "UNCONFIRMED",
                 partialMatch: "Partial Match",
                 matchHeader: "Match #",
                 vehicleType: "Vehicle Type",
@@ -163,7 +165,8 @@
                 noResults: "No se encontraron registros coincidentes.",
                 partialMatch: "Coincidencia Parcial",
                 matchHeader: "Coincidencia #",
-                confirmed: "Confirmada",
+                isConfirmed: "CONFIRMADA",
+                isNotConfirmed: "INCONFIRMADA",
                 vehicleType: "Tipo de Vehículo",
                 stateGov: "Estado / GOB",
                 uniqueIDs: "Notas",
@@ -300,15 +303,25 @@
                 results.forEach((result, index) => {
                     // result.item contains the full original data object for the row
                     const row = result.item; 
-                    
+// for debugging:
+//                    htmlContent += `<p>${result.score}</p>`;
+
                     let matchPrefix = '';
+
                     // result.score of 0 is a perfect match. Anything greater is a fuzzy match.
-//                    if (result.score > 0) {
-//                        matchPrefix = `<span style="color: #d9534f;">${T.partialMatch}: </span>`;
-//                    }
+                    // weirdly, the score is never exactly zero
+                    if (result.score > .001) { 
+                        matchPrefix = `<span style="color: #d9534f;">${T.partialMatch}: </span>`;
+                    }
+
+                    let confStatus = T.isNotConfirmed;
 
                     // Use the original "Plate No." key for display purposes
-                    htmlContent += `<div class="result-card"><h3>${matchPrefix}${row["STATUS"]}: ${row["Plate No."]}</h3>`;
+                    if (row["STATUS"] === "CONFIRMED") {
+                        confStatus = T.isConfirmed;
+                    }
+ 
+                    htmlContent += `<div class="result-card"><h3>${matchPrefix}${confStatus}: ${row["Plate No."]}</h3>`;
 
                     if (row["Vehicle Type"] !== undefined) {
                         htmlContent += `<p><strong>${T.vehicleType}:</strong> ${row["Vehicle Type"]}</p>`;
