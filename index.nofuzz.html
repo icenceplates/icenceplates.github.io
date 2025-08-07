@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>License Plate Lookup</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -137,14 +136,11 @@
                 mainHeader: "License Plate Lookup",
                 plateLabel: "Enter license plate:",
                 searchButton: "Search",
-                note: "Search results will include plates with numbers closest to the one you are looking for. If you are unsure of the entire plate number, just enter the parts you know for sure.",
+                note: "If you are unsure of the entire plate number, use ‘?’ in place of a single character and ‘*’ for multiple characters when searching.",
                 disclaimer: "All confirmed vehicles have been reviewed and documented by members of the Rapid Response Team. While the dataset is thorough, it is not exhaustive. ICE has been known to rotate vehicles, switch license plates, and introduce new plates into circulation. Please treat this form as just one component of your verification process. Ultimately, the most reliable way to confirm a vehicle’s purpose is by identifying who is inside.",
                 resultsTitle: "Search results",
                 noResults: "No matching records found.",
                 confirmed: "STATUS",
-                isConfirmed: "CONFIRMED",
-                isNotConfirmed: "UNCONFIRMED",
-                partialMatch: "Partial Match",
                 matchHeader: "Match #",
                 vehicleType: "Vehicle Type",
                 stateGov: "State / GOV",
@@ -159,14 +155,12 @@
                 mainHeader: "Búsqueda de Matrículas",
                 plateLabel: "Ingrese la matrícula:",
                 searchButton: "Buscar",
-                note: "Los resultados de la búsqueda incluirán placas con números más cercanos al que está buscando. Si no está seguro del número de placa completo, ingrese simplemente las partes que conoce con seguridad.",
+                note: "Si no estás seguro del número completo de la placa, usa ‘?’ para reemplazar un solo carácter y ‘*’ para varios caracteres al buscar.",
                 disclaimer: "Todos los vehículos confirmados han sido revisados y documentados por miembros del Equipo de Respuesta Rápida. Si bien la base de datos es detallada, no es exhaustiva: se sabe que ICE cambia placas, rota vehículos e introduce nuevas placas en circulación. Por favor, utiliza este formulario solo como una parte del proceso de verificación. En última instancia, la forma más confiable de saber con certeza es identificar quién está dentro del vehículo.",
                 resultsTitle: "Resultados de la Búsqueda",
                 noResults: "No se encontraron registros coincidentes.",
-                partialMatch: "Coincidencia Parcial",
                 matchHeader: "Coincidencia #",
-                isConfirmed: "CONFIRMADA",
-                isNotConfirmed: "INCONFIRMADA",
+                confirmed: "Confirmada",
                 vehicleType: "Tipo de Vehículo",
                 stateGov: "Estado / GOB",
                 uniqueIDs: "Notas",
@@ -209,9 +203,10 @@
             setLanguage('en');
         });
 
-        // --- Main Application Logic ---
+        // --- Main Application Logic (Unchanged) ---
         document.getElementById('lookupForm').addEventListener('submit', function(event) {
             event.preventDefault();
+            // Clear previous results before a new search
             document.getElementById('results-container').innerHTML = ""; 
             const plateQuery = document.getElementById('plateInput').value;
 
@@ -257,31 +252,22 @@
                     return;
                 }
 
-                // Create data objects, preserving original headers and adding a specific 'plateNum' key for searching
-                const dataRows = rows.slice(1).map(row => {
-                    const rowData = {};
-                    headers.forEach((header, index) => {
-                        if (header) {
-                            rowData[header] = row[index];
-                        }
-                    });
-                    // Add a dedicated key for Fuse.js to search against
-                    rowData['plateNum'] = row[plateNoIndex] ? row[plateNoIndex].toString() : '';
-                    return rowData;
-                }).filter(row => row.plateNum); // Filter out rows without a plate number
+                const dataRows = rows.slice(1);
+                const results = [];
+                const regex = new RegExp('^' + plateQuery.replace(/\s+/g, '').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i');
 
-                // Fuse.js options for fuzzy search targeting the 'plateNum' key
-                const options = {
-                    ignoreDiacritics: true,
-                    findAllMatches: true, 
-                    includeScore: true,
-                    ignoreLocation: true,
-                    keys: ['plateNum'],
-                    threshold: 0.4 
-                };
-
-                const fuse = new Fuse(dataRows, options);
-                const results = fuse.search(plateQuery);
+                dataRows.forEach(row => {
+                    const plateNo = row[plateNoIndex];
+                    if (plateNo && regex.test(plateNo.toString())) {
+                        const rowData = {};
+                        headers.forEach((header, index) => {
+                            if (header) {
+                                rowData[header] = row[index];
+                            }
+                        });
+                        results.push(rowData);
+                    }
+                });
 
                 displayResults(results);
 
@@ -291,7 +277,7 @@
             }
         }
 
-        // --- MODIFIED: This function handles Fuse.js result objects ---
+        // --- MODIFIED: This function now writes to a div on the main page ---
         function displayResults(results) {
             const resultsContainer = document.getElementById('results-container');
             const T = translations[currentLanguage];
@@ -300,28 +286,8 @@
             if (results.length === 0) {
                 htmlContent += `<p>${T.noResults}</p>`;
             } else {
-                results.forEach((result, index) => {
-                    // result.item contains the full original data object for the row
-                    const row = result.item; 
-// for debugging:
-//                    htmlContent += `<p>${result.score}</p>`;
-
-                    let matchPrefix = '';
-
-                    // result.score of 0 is a perfect match. Anything greater is a fuzzy match.
-                    // weirdly, the score is never exactly zero
-                    if (result.score > .001) { 
-                        matchPrefix = `<span style="color: #d9534f;">${T.partialMatch}: </span>`;
-                    }
-
-                    let confStatus = T.isNotConfirmed;
-
-                    // Use the original "Plate No." key for display purposes
-                    if (row["STATUS"] === "CONFIRMED") {
-                        confStatus = T.isConfirmed;
-                    }
- 
-                    htmlContent += `<div class="result-card"><h3>${matchPrefix}${confStatus}: ${row["Plate No."]}</h3>`;
+                results.forEach((row, index) => {
+                    htmlContent += `<div class="result-card"><h3>${row["STATUS"]}: ${row["Plate No."]}</h3>`;
 
                     if (row["Vehicle Type"] !== undefined) {
                         htmlContent += `<p><strong>${T.vehicleType}:</strong> ${row["Vehicle Type"]}</p>`;
@@ -342,6 +308,7 @@
                         const timeKey = `Time${numSuffix ? ' ' + numSuffix : ''}`;
 
                         let formattedDate = 'N/A';
+//                        if (row[dateKey] != undefined && row[dateKey] !== '') {
                         if (row[dateKey]) {
                             if (typeof row[dateKey] === 'number') {
                                 const date = new Date(Math.round((row[dateKey] - 25569) * 864e5));
