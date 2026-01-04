@@ -71,41 +71,10 @@
         button#searchButton:hover {
             background-color: #0056b3;
         }
-        button#searchButton:disabled {
-            background-color: #a0c4eb;
-            cursor: not-allowed;
-        }
         .note, .disclaimer {
             font-size: 0.9em;
             color: #666;
             margin-top: 15px;
-        }
-
-        /* --- Progress Bar Styles --- */
-        #progress-wrapper {
-            display: none; /* Hidden by default */
-            margin-top: 20px;
-            width: 100%;
-        }
-        .progress-track {
-            width: 100%;
-            height: 10px;
-            background-color: #e9ecef;
-            border-radius: 5px;
-            overflow: hidden;
-        }
-        #progress-fill {
-            height: 100%;
-            width: 0%;
-            background-color: #28a745;
-            transition: width 0.3s ease;
-        }
-        #progress-text {
-            text-align: center;
-            font-size: 0.85em;
-            color: #555;
-            margin-top: 5px;
-            font-style: italic;
         }
 
         /* --- Styles for the results displayed on the main page --- */
@@ -152,14 +121,6 @@
                 <input type="text" id="plateInput" name="plateInput" placeholder="e.g., ABC* or 12?XYZ" required>
             </div>
             <button type="submit" id="searchButton"></button>
-            
-            <div id="progress-wrapper">
-                <div class="progress-track">
-                    <div id="progress-fill"></div>
-                </div>
-                <div id="progress-text"></div>
-            </div>
-
             <p class="note"></p>
             <p class="disclaimer"></p>
         </form>
@@ -168,7 +129,7 @@
     <div id="results-container"></div>
 
     <script>
-        // --- Translation Data and Logic ---
+        // --- Translation Data and Logic (Unchanged) ---
         const translations = {
             en: {
                 langToggle: "Haga clic aquí para la versión en español",
@@ -190,12 +151,7 @@
                 uniqueIDs: "Notes",
                 location: "Location",
                 date: "Date",
-                time: "Time",
-                // Status messages
-                statusLoading: "Downloading database...",
-                statusProcessing: "Processing records...",
-                statusSearching: "Running search algorithm...",
-                statusDone: "Done!"
+                time: "Time"
             },
             es: {
                 langToggle: "Click here for the English version",
@@ -216,12 +172,7 @@
                 uniqueIDs: "Notas",
                 location: "Ubicación",
                 date: "Fecha",
-                time: "Hora",
-                // Status messages
-                statusLoading: "Descargando base de datos...",
-                statusProcessing: "Procesando registros...",
-                statusSearching: "Ejecutando algoritmo de búsqueda...",
-                statusDone: "¡Hecho!"
+                time: "Hora"
             }
         };
 
@@ -242,8 +193,10 @@
             // Re-render results if they exist, to apply new language
             const resultsContainer = document.getElementById('results-container');
             if (resultsContainer.innerHTML) {
-                // If we are mid-result, we simply update static text. 
-                // A full re-search isn't strictly necessary just for lang switch unless desired.
+                const plateQuery = document.getElementById('plateInput').value;
+                if (plateQuery) {
+                    document.getElementById('lookupForm').requestSubmit();
+                }
             }
         }
 
@@ -256,24 +209,6 @@
             setLanguage('en');
         });
 
-        // --- UI Helper Functions for Progress Bar ---
-        function showProgress(show) {
-            const wrapper = document.getElementById('progress-wrapper');
-            const btn = document.getElementById('searchButton');
-            wrapper.style.display = show ? 'block' : 'none';
-            btn.disabled = show; // Disable search button while processing
-        }
-
-        function updateProgress(percent, messageKey) {
-            const fill = document.getElementById('progress-fill');
-            const text = document.getElementById('progress-text');
-            
-            fill.style.width = percent + '%';
-            if (messageKey) {
-                text.textContent = translations[currentLanguage][messageKey];
-            }
-        }
-
         // --- Main Application Logic ---
         document.getElementById('lookupForm').addEventListener('submit', function(event) {
             event.preventDefault();
@@ -285,10 +220,6 @@
                 return;
             }
 
-            // 1. Start Progress
-            showProgress(true);
-            updateProgress(10, 'statusLoading');
-
             fetch('data.xlsx')
                 .then(response => {
                     if (!response.ok) {
@@ -297,18 +228,11 @@
                     return response.arrayBuffer();
                 })
                 .then(arrayBuffer => {
-                    // 2. File Loaded. Update Progress.
-                    updateProgress(40, 'statusProcessing');
-                    
-                    // Use setTimeout to allow the UI to repaint the progress bar before the heavy blocking XLSX parse begins
-                    setTimeout(() => {
-                        processData(arrayBuffer, plateQuery);
-                    }, 10);
+                    processData(arrayBuffer, plateQuery);
                 })
                 .catch(error => {
                     console.error("Fetch Error:", error);
                     alert("Could not load 'data.xlsx'. Please make sure the file is in the same folder and you are running this from a local web server.");
-                    showProgress(false);
                 });
         });
 
@@ -322,7 +246,6 @@
 
                 if (rows.length < 2) {
                     alert(currentLanguage === 'en' ? "The XLSX file has no data to search." : "El archivo XLSX no tiene datos para buscar.");
-                    showProgress(false);
                     return;
                 }
 
@@ -331,11 +254,10 @@
                 
                 if (plateNoIndex === -1) {
                     alert(currentLanguage === 'en' ? "The XLSX file must have a 'Plate No.' column in row 1." : "El archivo XLSX debe tener una columna 'Plate No.' en la fila 1.");
-                    showProgress(false);
                     return;
                 }
 
-                // Create data objects
+                // Create data objects, preserving original headers and adding a specific 'plateNum' key for searching
                 const dataRows = rows.slice(1).map(row => {
                     const rowData = {};
                     headers.forEach((header, index) => {
@@ -343,28 +265,12 @@
                             rowData[header] = row[index];
                         }
                     });
+                    // Add a dedicated key for Fuse.js to search against
                     rowData['plateNum'] = row[plateNoIndex] ? row[plateNoIndex].toString() : '';
                     return rowData;
-                }).filter(row => row.plateNum);
+                }).filter(row => row.plateNum); // Filter out rows without a plate number
 
-                // 3. Data Parsed. Ready to Search. Update Progress.
-                updateProgress(70, 'statusSearching');
-
-                // Use setTimeout again to allow UI repaint before Fuse.js indexing/searching
-                setTimeout(() => {
-                    performSearch(dataRows, plateQuery);
-                }, 10);
-
-            } catch (error) {
-                console.error("Error processing XLSX file:", error);
-                alert(currentLanguage === 'en' ? "An error occurred while processing the file." : "Ocurrió un error al procesar el archivo.");
-                showProgress(false);
-            }
-        }
-
-        function performSearch(dataRows, plateQuery) {
-            try {
-                // Fuse.js options
+                // Fuse.js options for fuzzy search targeting the 'plateNum' key
                 const options = {
                     ignoreDiacritics: true,
                     findAllMatches: true, 
@@ -377,21 +283,15 @@
                 const fuse = new Fuse(dataRows, options);
                 const results = fuse.search(plateQuery);
 
-                // 4. Search Done. Update Progress to 100%.
-                updateProgress(100, 'statusDone');
-
-                // Short delay to show "Done" before hiding progress and showing results
-                setTimeout(() => {
-                    displayResults(results);
-                    showProgress(false);
-                }, 10);
+                displayResults(results);
 
             } catch (error) {
-                console.error("Error during search:", error);
-                showProgress(false);
+                console.error("Error processing XLSX file:", error);
+                alert(currentLanguage === 'en' ? "An error occurred while processing the file." : "Ocurrió un error al procesar el archivo.");
             }
         }
 
+        // --- MODIFIED: This function handles Fuse.js result objects ---
         function displayResults(results) {
             const resultsContainer = document.getElementById('results-container');
             const T = translations[currentLanguage];
@@ -401,14 +301,22 @@
                 htmlContent += `<p>${T.noResults}</p>`;
             } else {
                 results.forEach((result, index) => {
+                    // result.item contains the full original data object for the row
                     const row = result.item; 
+// for debugging:
+//                    htmlContent += `<p>${result.score}</p>`;
+
                     let matchPrefix = '';
 
+                    // result.score of 0 is a perfect match. Anything greater is a fuzzy match.
+                    // weirdly, the score is never exactly zero
                     if (result.score > .001) { 
                         matchPrefix = `<span style="color: #d9534f;">${T.partialMatch}: </span>`;
                     }
 
                     let confStatus = T.isNotConfirmed;
+
+                    // Use the original "Plate No." key for display purposes
                     if (row["STATUS"] === "CONFIRMED") {
                         confStatus = T.isConfirmed;
                     }
